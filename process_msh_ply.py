@@ -6,7 +6,6 @@ import time
 import cv2
 from PIL import Image
 import numpy as np
-import trimesh
 
 
 def pc_normalize(pc):
@@ -137,81 +136,6 @@ def ply2projections(objname):
     del vis
     return imgs
 
-
-def point_cloud_generation_from_mesh(mesh_path, pc_full_path=None):
-    # get the folder of the mesh
-    mesh_folder = os.path.dirname(mesh_path)
-    # find the image in the folder
-    image_path = None
-    is_obj = False
-    if mesh_path.endswith(".obj"):
-        is_obj = True
-        for f in os.listdir(mesh_folder):
-            if f.endswith(".png") or f.endswith(".jpg"):
-                image_path = os.path.join(mesh_folder, f)
-                break
-
-    mesh = trimesh.load_mesh(mesh_path)
-    # rotate mesh to make it face up
-    rotation = trimesh.transformations.rotation_matrix(
-        np.pi*0.9, [0, 1, 1], [0, 0, 0])
-    mesh.apply_transform(rotation)
-    if is_obj and image_path is not None:
-        img = Image.open(image_path)
-        uvs = mesh.visual.uv
-        material = trimesh.visual.texture.SimpleMaterial(image=img)
-        texture_visual = trimesh.visual.TextureVisuals(
-            uv=uvs, image=img, material=material)
-        mesh.visual = texture_visual
-
-    if is_obj and image_path is None:
-        print("No image found in the folder of obj file. Return point cloud without color.")
-        # sample surface without color
-        samples, face_index = trimesh.sample.sample_surface(mesh, 50000)
-        np_points = np.array(samples)
-        pc_from_obj = o3d.geometry.PointCloud()
-        pc_from_obj.points = o3d.utility.Vector3dVector(np_points)
-    else:
-        # generate rgb point cloud
-        samples, face_index, colors = trimesh.sample.sample_surface(
-            mesh, 50000, sample_color=True)
-
-        np_points = np.array(samples)  # , dtype=np.float32)
-        np_colors = np.array(colors, dtype=np.float32)[:, :3]/255.0
-
-        pc_from_obj = o3d.geometry.PointCloud()
-        pc_from_obj.points = o3d.utility.Vector3dVector(np_points)
-        pc_from_obj.colors = o3d.utility.Vector3dVector(np_colors)
-
-    if pc_full_path is not None:
-        o3d.io.write_point_cloud(pc_full_path, pc_from_obj)
-    return pc_from_obj
-
-
-def as_mesh(scene_or_mesh):
-    """
-    Convert a possible scene to a mesh.
-
-    If conversion occurs, the returned mesh has only vertex and face data.
-    """
-    if isinstance(scene_or_mesh, trimesh.Scene):
-        if len(scene_or_mesh.geometry) == 0:
-            mesh = None  # empty scene
-        else:
-            # we lose texture information here
-            mesh_list = []
-            for m in scene_or_mesh.geometry.values():
-                if isinstance(m, trimesh.Trimesh):
-                    mesh_list.append(trimesh.Trimesh(
-                        vertices=m.vertices, faces=m.faces))
-            mesh = trimesh.util.concatenate(mesh_list)
-            # mesh = trimesh.util.concatenate(
-            #     tuple(trimesh.Trimesh(vertices=g.vertices, faces=g.faces)
-            #           for g in scene_or_mesh.geometry.values()))
-    else:
-        assert (isinstance(mesh, trimesh.Trimesh))
-        mesh = scene_or_mesh
-    return mesh
 
 def main(config):
     #get the projections and patches

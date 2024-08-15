@@ -17,7 +17,7 @@ def point_cloud_generation_from_mesh(mesh_path, pc_full_path=None):
     mesh = o3d.io.read_triangle_mesh(mesh_path)
 
     # Sample points on the mesh surface
-    point_cloud = mesh.sample_points_poisson_disk(number_of_points=1000)
+    point_cloud = mesh.sample_points_poisson_disk(number_of_points=10000)
 
     if pc_full_path is not None:
         try:
