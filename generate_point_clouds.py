@@ -1,7 +1,8 @@
 import os
 import signal
 
-import open3d as o3d
+# import open3d as o3d
+import trimesh
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
@@ -13,41 +14,46 @@ import argparse
 
 
 def point_cloud_generation_from_mesh(mesh_path, pc_full_path=None):
-    # Load the mesh from a .glb file
-    mesh = o3d.io.read_triangle_mesh(mesh_path)
+    # Load the mesh
+    mesh = trimesh.load(mesh_path, force='mesh')
+
+    # Check if the mesh is loaded correctly
+    if not mesh.is_empty:
+        print("Mesh loaded successfully!")
+    else:
+        print("Failed to load the mesh.")
+
+    # Translate the mesh to the origin
+    mesh.apply_translation(-mesh.centroid)
+
+    # Scale the mesh to fit within a cube from -1 to 1
+    mesh.apply_scale(1 / (mesh.scale*0.5))
 
     # Sample points on the mesh surface
-    point_cloud = mesh.sample_points_poisson_disk(number_of_points=10000)
+    n_points = 10000
+    points, faces = mesh.sample(n_points, return_index=True)
+    normals = mesh.face_normals[faces]
 
-    if pc_full_path is not None:
-        try:
-            o3d.io.write_point_cloud(pc_full_path, point_cloud)
-        except:
-            return None
+    # concatenate the points and normals
+    point_cloud = np.concatenate([points, normals], axis=1)
+
+    # save the point cloud to a npy file
+    np.save(pc_full_path, point_cloud)
 
     # return point_cloud
+    return point_cloud
 
 def generate_point_cloud(uid, mesh_path, base_dir):
-    pc_full_path = os.path.join(base_dir, f"{uid}.ply")
-    point_cloud_generation_from_mesh(mesh_path, pc_full_path)
+    pc_full_path = os.path.join(base_dir, f"{uid}.npy")
+    print(f"Generating point cloud for {uid} from {mesh_path}")
+    pct = point_cloud_generation_from_mesh(mesh_path, pc_full_path)
+    return pct
 
 
 def generate_point_clouds_from_class(class_name, loaded_objects, max_workers=8):
     base_dir = class_name + "_point_clouds"
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
-
-    # # go through all plane_objects and generate point clouds
-    # skipped = 0
-    # for uid, mesh_path in tqdm(loaded_objects.items()):
-    #     pc_full_path = os.path.join(base_dir, f"{uid}.ply")
-
-    #     returned_pc = point_cloud_generation_from_mesh(mesh_path, pc_full_path)
-
-    #     if returned_pc is None:
-    #         skipped += 1
-
-    # print(f"Skipped {skipped} objects.")
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(generate_point_cloud, uid, mesh_path, base_dir): uid
